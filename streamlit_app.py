@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+import os
 
 # -----------------------------
 # Page config and style
@@ -56,7 +57,7 @@ st.markdown("Dynamic clustering using **R-F-M** features + Profitability Quadran
 # Upload or use sample data
 # -----------------------------
 uploaded_file = st.file_uploader("Upload your Excel or CSV file", type=["csv", "xlsx"])
-df = pd.read_excel(r'raw_data\RFM_model_ june to 24 august.xlsx')
+df = pd.read_excel(os.path.join(r'raw_data','RFM_model_ june to 24 august.xlsx'))
 df = df.dropna()
 
 if uploaded_file is not None:
