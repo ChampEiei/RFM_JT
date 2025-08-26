@@ -54,11 +54,10 @@ st.title("📊 Customer Segmentation Dashboard (K-Means + Quadrant Analysis)")
 st.markdown("Dynamic clustering using **R-F-M** features + Profitability Quadrants.", unsafe_allow_html=True)
 
 # -----------------------------
-# Upload or use sample data
+# File upload
 # -----------------------------
 uploaded_file = st.file_uploader("Upload your Excel or CSV file", type=["csv", "xlsx"])
-df = pd.read_excel(os.path.join(r'raw_data','RFM_model_ june to 24 august.xlsx'))
-df = df.dropna()
+df = None
 
 if uploaded_file is not None:
     if uploaded_file.name.endswith(".csv"):
@@ -66,21 +65,32 @@ if uploaded_file is not None:
     else:
         df = pd.read_excel(uploaded_file)
 
+if df is None:
+    st.warning("Please upload a file to continue.")
+    st.stop()
+
+# -----------------------------
+# Clean & prepare data
+# -----------------------------
+df = df.dropna()
 df.columns = [col.upper() for col in df.columns]
+
+required_cols = ['CUSTOMER_CODE', 'RECENT_ORDER', 'TOTAL_PARCEL', 
+                 'TOTAL_REVENUE', 'UNIT_REVENUE', 'UNIT_WEIGHT']
+for col in required_cols:
+    if col not in df.columns:
+        st.error(f"Missing required column: {col}")
+        st.stop()
 
 # Add AVG_DAY_BETWEEN_NEXT_ORDER if missing
 if "AVG_DAY_BETWEEN_NEXT_ORDER" not in df.columns:
     df["AVG_DAY_BETWEEN_NEXT_ORDER"] = np.random.randint(5, 60, size=len(df))
 
-df = df[['CUSTOMER_CODE', 'RECENT_ORDER', 'TOTAL_PARCEL',
-         'TOTAL_REVENUE', 'UNIT_REVENUE', 'UNIT_WEIGHT', 'AVG_DAY_BETWEEN_NEXT_ORDER']].copy()
+df = df[required_cols + ['AVG_DAY_BETWEEN_NEXT_ORDER']].copy()
 df = df.dropna()
 
-st.subheader("📋 Data Preview")
-st.dataframe(df.head())
-
 # -----------------------------
-# KPI Cards at the top
+# KPI Cards
 # -----------------------------
 total_customers = df['CUSTOMER_CODE'].nunique()
 total_revenue = df['TOTAL_REVENUE'].sum()
@@ -115,7 +125,7 @@ df['Cluster'] = kmeans.fit_predict(X_scaled)
 df['Cluster_str'] = df['Cluster'].astype(str)
 
 # -----------------------------
-# Cluster Summary Table
+# Cluster Summary
 # -----------------------------
 cluster_summary = df.groupby("Cluster").agg({
     "CUSTOMER_CODE": "count",
@@ -137,7 +147,9 @@ st.dataframe(cluster_summary.style.format({
     "AVG_DAY_BETWEEN_NEXT_ORDER": "{:.2f}"
 }))
 
-# Horizontal cluster cards
+# -----------------------------
+# Cluster Cards
+# -----------------------------
 st.markdown("### 📌 Cluster Snapshot")
 cards_html = ""
 for _, row in cluster_summary.iterrows():
@@ -155,7 +167,7 @@ for _, row in cluster_summary.iterrows():
 st.markdown(cards_html, unsafe_allow_html=True)
 
 # -----------------------------
-# Cluster Insights Bar Graphs
+# Cluster Insights Graphs
 # -----------------------------
 st.subheader("📈 Cluster Insights")
 col1, col2 = st.columns(2)
@@ -202,7 +214,7 @@ fig3.update_yaxes(range=[0, rev_max], title="Unit Revenue")
 
 st.plotly_chart(fig3, use_container_width=True)
 
-# Quadrant analysis
+# Quadrant counts
 st.markdown("### 📌 Quadrant Analysis & Conclusion")
 quadrants = {
     "Q1: High Revenue, High Weight": ((df["UNIT_REVENUE"] >= avg_unit_rev) & (df["UNIT_WEIGHT"] >= avg_unit_wt)).sum(),
