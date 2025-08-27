@@ -7,6 +7,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from plotly.subplots import make_subplots
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import seaborn as sns
 
 
 # -----------------------------
@@ -143,44 +148,46 @@ st.dataframe(cluster_summary.style.format({
 }))
 
 # -----------------------------
-import matplotlib.pyplot as plt
 
-st.subheader("🔹 2D Scatter Plot Matrix (Static): R-F-M by Cluster")
 
-features = ["RECENT_ORDER", "FREQUENCY", "TOTAL_REVENUE"]
-clusters = sorted(df["Cluster"].unique())
+st.subheader("🔹 3D Scatter Plot: R-F-M by Cluster (All Data)")
 
-fig, axes = plt.subplots(3, 3, figsize=(12, 12))
-colors = plt.cm.tab10.colors  # Professional categorical palette
+# Apply Seaborn style
+sns.set_style("whitegrid")
+palette = sns.color_palette("tab10", n_colors=df['Cluster_str'].nunique())
 
-for i, y_feat in enumerate(features):
-    for j, x_feat in enumerate(features):
-        ax = axes[i, j]
-        for cluster in clusters:
-            cluster_df = df[df["Cluster"] == cluster]
-            ax.scatter(
-                cluster_df[x_feat],
-                cluster_df[y_feat],
-                s=20,
-                color=colors[cluster % len(colors)],
-                label=f"Cluster {cluster}" if (i == 0 and j == 0) else None,
-                alpha=0.7
-            )
-        if i == 2:
-            ax.set_xlabel(x_feat)
-        else:
-            ax.set_xlabel("")
-        if j == 0:
-            ax.set_ylabel(y_feat)
-        else:
-            ax.set_ylabel("")
+# 3 features
+x_feat = "RECENT_ORDER"
+y_feat = "FREQUENCY"
+z_feat = "TOTAL_REVENUE"
 
-fig.suptitle("2D R-F-M Scatter Plot Matrix by Cluster", fontsize=16)
-fig.tight_layout(rect=[0, 0, 1, 0.97])
-fig.legend(title="Clusters", loc="upper right")
+# Create 3D figure
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
 
+# Scatter points for each cluster
+clusters = df['Cluster_str'].unique()
+for i, cluster in enumerate(clusters):
+    cluster_data = df[df['Cluster_str'] == cluster]
+    ax.scatter(
+        cluster_data[x_feat],
+        cluster_data[y_feat],
+        cluster_data[z_feat],
+        label=str(cluster),
+        color=palette[i],
+        alpha=0.7,
+        s=50
+    )
+
+# Set axis labels and title
+ax.set_xlabel(x_feat)
+ax.set_ylabel(y_feat)
+ax.set_zlabel(z_feat)
+ax.set_title("3D Scatter Plot: R-F-M by Cluster")
+ax.legend(title='Cluster')
+
+# Show plot in Streamlit
 st.pyplot(fig)
-
 
 
 # -----------------------------
@@ -196,9 +203,13 @@ for i, feature in enumerate(features):
         fig_vio = go.Figure()
         for cluster in sorted(df['Cluster'].unique()):
             cluster_df = df[df['Cluster'] == cluster]
+            # Limit to 3000 rows per cluster
+            cluster_df_sample = cluster_df.sample(
+                n=min(len(cluster_df), 3000), random_state=42
+            )
             fig_vio.add_trace(go.Violin(
-                x=[str(cluster)] * len(cluster_df),
-                y=cluster_df[feature],
+                x=[str(cluster)] * len(cluster_df_sample),
+                y=cluster_df_sample[feature],
                 name=f"Cluster {cluster}",
                 box_visible=True,
                 meanline_visible=True,
@@ -212,28 +223,68 @@ for i, feature in enumerate(features):
             violinmode='group'
         )
         st.plotly_chart(fig_vio, use_container_width=True)
-
 # -----------------------------
 # Weight vs Unit Revenue with Linear Regression + Profit Score
 # -----------------------------
+# -----------------------------
 st.subheader("⚖️ Weight vs Unit Revenue Analysis")
+
+# Sliders for user input
 k_value = st.slider("Profit Score Penalty (k)", 0.0, 5.0, 1.0, 0.1)
 coeff_slider = st.slider("Linear Coefficient for regression line", 0.0, 5.0, 1.0, 0.05)
+
+
+# Compute Profit Score
 df['Profit_Score'] = df['UNIT_REVENUE'] - k_value * df['UNIT_WEIGHT']
 
-# Linear Regression
+# -----------------------------
+# Linear Regression on full dataset
+from sklearn.linear_model import LinearRegression
+
 lr = LinearRegression()
 lr.fit(df[['UNIT_WEIGHT']], df['UNIT_REVENUE'])
-df['Linear_Pred'] = lr.predict(df[['UNIT_WEIGHT']]) * coeff_slider
 
-fig_wv = px.scatter(df, x='UNIT_WEIGHT', y='UNIT_REVENUE', color='Profit_Score',
-                    color_continuous_scale='RdYlGn',
-                    hover_data=['CUSTOMER_CODE', 'TOTAL_REVENUE', 'FREQUENCY'])
+a = lr.coef_[0]
+b = lr.intercept_
+df['Linear_Pred'] = (a * df['UNIT_WEIGHT'] + b) * coeff_slider
+
+st.markdown(f"**Regression Equation:**  \n"
+            f"UNIT_REVENUE = {a* coeff_slider:.2f} × UNIT_WEIGHT + {b:.2f}")
+# -----------------------------
+# Sample data for plotting if dataset is large
+MAX_POINTS = 5000
+df_plot = df.sample(n=min(len(df), MAX_POINTS), random_state=42)
+
+# -----------------------------
+# Plot with Plotly Express
+import plotly.express as px
+import plotly.graph_objects as go
+
+fig_wv = px.scatter(
+    df_plot,
+    x='UNIT_WEIGHT',
+    y='UNIT_REVENUE',
+    color='Profit_Score',
+    color_continuous_scale='RdYlGn',
+    hover_data=['CUSTOMER_CODE', 'TOTAL_REVENUE', 'FREQUENCY']
+)
+
+# Add mean lines (based on full data)
 fig_wv.add_hline(y=df['UNIT_REVENUE'].mean(), line_dash="dash", line_color="red")
 fig_wv.add_vline(x=df['UNIT_WEIGHT'].mean(), line_dash="dash", line_color="red")
-fig_wv.add_trace(go.Scatter(x=df['UNIT_WEIGHT'], y=df['Linear_Pred'],
-                            mode='lines', name='Linear Fit', line=dict(color='blue', width=2)))
+
+# Add Linear Regression line (full dataset)
+fig_wv.add_trace(go.Scatter(
+    x=df['UNIT_WEIGHT'],
+    y=df['Linear_Pred'],
+    mode='lines',
+    name='Linear Fit',
+    line=dict(color='blue', width=2)
+))
+
+# Display plot
 st.plotly_chart(fig_wv, use_container_width=True)
+
 
 # -----------------------------
 # Comparison Table for Q4 + Linear Below Line
@@ -284,7 +335,7 @@ st.dataframe(comparison_df.style.format({
 st.subheader("👥 Customer Details by Cluster")
 selected_cluster = st.selectbox("Filter by Cluster", ["All"] + list(df['Cluster_str'].unique()))
 df_filtered = df if selected_cluster == "All" else df[df['Cluster_str'] == selected_cluster]
-st.dataframe(df_filtered)
+st.dataframe(df_filtered.sort_values(by ='Profit_Score'))
 
 # -----------------------------
 # Executive Summary

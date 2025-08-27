@@ -2,3 +2,4 @@ plotly
 pandas
 scikit-learn
 openpyxl
+matplotlib
