@@ -122,6 +122,29 @@ kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
 df['Cluster'] = kmeans.fit_predict(X_scaled)
 df['Cluster_str'] = df['Cluster'].astype(str)
 
+# Compute stats again
+cluster_stats = df.groupby('Cluster').agg({
+    'RECENT_ORDER': ['mean', 'min', 'max', 'median'],
+    'FREQUENCY': ['mean', 'min', 'max', 'median'],
+    'TOTAL_REVENUE': ['mean', 'min', 'max', 'median'],
+    'UNIT_WEIGHT': ['mean', 'min', 'max', 'median'],
+    'UNIT_REVENUE': ['mean', 'min', 'max', 'median']
+}).round(2)
+
+# Flatten column names
+cluster_stats.columns = ['_'.join(col).strip() for col in cluster_stats.columns.values]
+
+# Print in console
+print("\n========== 📊 Cluster Deep Statistics ==========\n")
+for idx, row in cluster_stats.iterrows():
+    print(f"--- Cluster {idx} ---")
+    print(f" Recency   → mean={row['RECENT_ORDER_mean']} | min={row['RECENT_ORDER_min']} | max={row['RECENT_ORDER_max']} | median={row['RECENT_ORDER_median']}")
+    print(f" Frequency → mean={row['FREQUENCY_mean']} | min={row['FREQUENCY_min']} | max={row['FREQUENCY_max']} | median={row['FREQUENCY_median']}")
+    print(f" Monetary  → mean={row['TOTAL_REVENUE_mean']} | min={row['TOTAL_REVENUE_min']} | max={row['TOTAL_REVENUE_max']} | median={row['TOTAL_REVENUE_median']}")
+    print(f" Unit Wt   → mean={row['UNIT_WEIGHT_mean']} | min={row['UNIT_WEIGHT_min']} | max={row['UNIT_WEIGHT_max']} | median={row['UNIT_WEIGHT_median']}")
+    print(f" Unit Rev  → mean={row['UNIT_REVENUE_mean']} | min={row['UNIT_REVENUE_min']} | max={row['UNIT_REVENUE_max']} | median={row['UNIT_REVENUE_median']}")
+    print("\n")
+
 # -----------------------------
 # Cluster summary table
 # -----------------------------
@@ -162,7 +185,7 @@ y_feat = "FREQUENCY"
 z_feat = "TOTAL_REVENUE"
 
 # Create 3D figure
-fig = plt.figure(figsize=(10, 8))
+fig = plt.figure(figsize=(6, 5))
 ax = fig.add_subplot(111, projection='3d')
 
 # Scatter points for each cluster
@@ -187,7 +210,7 @@ ax.set_title("3D Scatter Plot: R-F-M by Cluster")
 ax.legend(title='Cluster')
 
 # Show plot in Streamlit
-st.pyplot(fig)
+st.pyplot(fig,use_container_width = True)
 
 
 # -----------------------------
@@ -232,7 +255,7 @@ st.subheader("⚖️ Weight vs Unit Revenue Analysis")
 # Sliders for user input
 k_value = st.slider("Profit Score Penalty (k)", 0.0, 5.0, 1.0, 0.1)
 coeff_slider = st.slider("Linear Coefficient for regression line", 0.0, 5.0, 1.0, 0.05)
-
+adjust_weight  = st.slider("Adjust Weight more than ",0,20,0,1)
 
 # Compute Profit Score
 df['Profit_Score'] = df['UNIT_REVENUE'] - k_value * df['UNIT_WEIGHT']
@@ -252,7 +275,7 @@ st.markdown(f"**Regression Equation:**  \n"
             f"UNIT_REVENUE = {a* coeff_slider:.2f} × UNIT_WEIGHT + {b:.2f}")
 # -----------------------------
 # Sample data for plotting if dataset is large
-MAX_POINTS = 5000
+MAX_POINTS = 20000
 df_plot = df.sample(n=min(len(df), MAX_POINTS), random_state=42)
 
 # -----------------------------
@@ -289,28 +312,36 @@ st.plotly_chart(fig_wv, use_container_width=True)
 # -----------------------------
 # Comparison Table for Q4 + Linear Below Line
 # -----------------------------
+# -----------------------------
+# Comparison Table for Q4 + Linear Below Line
+# -----------------------------
 st.subheader("📋 Comparison Table: Unit Revenue Adjustment Methods (Aggregated)")
 
 # Method 1: Quadrant 4 adjustment
 q4_df = df[(df['UNIT_REVENUE'] < df['UNIT_REVENUE'].mean()) & 
-           (df['UNIT_WEIGHT'] >= df['UNIT_WEIGHT'].mean())].copy()
+           (df['UNIT_WEIGHT'] >= df['UNIT_WEIGHT'].mean()) &
+            (df['UNIT_WEIGHT'] > adjust_weight)
+            ].copy()
 q4_new_unit_rev = (q4_df['UNIT_REVENUE'] * 1.1).mean()  # Example: adjusted mean
 q4_total_revenue_new = (q4_df['TOTAL_PARCEL'] * q4_df['UNIT_REVENUE'] * 1.1).sum()
 q4_total_revenue_old = q4_df['TOTAL_REVENUE'].sum()
 q4_profit_change = q4_total_revenue_new - q4_total_revenue_old
 q4_avg_weight = q4_df['UNIT_WEIGHT'].mean()
+q4_customer_count = q4_df['CUSTOMER_CODE'].nunique()
 
 # Method 2: Linear Fit adjustment
-under_line_df = df[df['UNIT_REVENUE'] < df['Linear_Pred']].copy()
+under_line_df = df[(df['UNIT_REVENUE'] < df['Linear_Pred']) & (df['UNIT_WEIGHT'] > adjust_weight)].copy()
 linear_new_unit_rev = under_line_df['Linear_Pred'].mean()
 linear_total_revenue_new = (under_line_df['TOTAL_PARCEL'] * under_line_df['Linear_Pred']).sum()
 linear_total_revenue_old = under_line_df['TOTAL_REVENUE'].sum()
 linear_profit_change = linear_total_revenue_new - linear_total_revenue_old
 linear_avg_weight = under_line_df['UNIT_WEIGHT'].mean()
+linear_customer_count = under_line_df['CUSTOMER_CODE'].nunique()
 
 # Create aggregated comparison table
 comparison_df = pd.DataFrame({
     "Method": ["Q4_Adjust", "Linear_Adjust"],
+    "Customer_Count": [q4_customer_count, linear_customer_count],
     "Old_Unit_Revenue": [q4_df['UNIT_REVENUE'].mean(), under_line_df['UNIT_REVENUE'].mean()],
     "New_Unit_Revenue": [q4_new_unit_rev, linear_new_unit_rev],
     "Unit_Weight": [q4_avg_weight, linear_avg_weight],
@@ -320,6 +351,7 @@ comparison_df = pd.DataFrame({
 })
 
 st.dataframe(comparison_df.style.format({
+    "Customer_Count": "{:,}",
     "Old_Unit_Revenue": "{:.2f}",
     "New_Unit_Revenue": "{:.2f}",
     "Unit_Weight": "{:.2f}",
@@ -327,6 +359,26 @@ st.dataframe(comparison_df.style.format({
     "Total_Revenue_After": "{:,.0f}",
     "Profit_Change": "{:,.0f}"
 }))
+
+# -----------------------------
+# Dynamic Conclusion
+# -----------------------------
+best_method = comparison_df.loc[comparison_df['Profit_Change'].idxmax()]
+
+weight_describe = f'with weight more than {adjust_weight} ' if adjust_weight != 0 and best_method['Method']=="Linear_Adjust" else None
+conclusion_text = f"""
+### 🔎 Conclusion:
+If we adjust **Unit Revenue {weight_describe}** towards the **{best_method['Method']}** approach,  
+we can potentially gain an additional **{best_method['Profit_Change']:,.0f} THB** in profit.  
+
+- **Customers Impacted:** {best_method['Customer_Count']:,}  
+- **Old Avg Unit Revenue:** {best_method['Old_Unit_Revenue']:.2f} → **New Avg Unit Revenue:** {best_method['New_Unit_Revenue']:.2f}  
+- **Avg Unit Weight:** {best_method['Unit_Weight']:.2f}  
+
+👉 This suggests that by **upselling Unit Revenue** either to the linear trend line or to the Quadrant 4 top revenue boundary, we can capture missed revenue opportunities and strengthen profitability.
+"""
+
+st.markdown(conclusion_text)
 
 
 # -----------------------------
