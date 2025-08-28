@@ -273,6 +273,8 @@ df['Linear_Pred'] = (a * df['UNIT_WEIGHT'] + b) * coeff_slider
 
 st.markdown(f"**Regression Equation:**  \n"
             f"UNIT_REVENUE = {a* coeff_slider:.2f} × UNIT_WEIGHT + {b:.2f}")
+st.markdown(f"**Profit Score:**  \n"
+            f"UNIT_REVENUE- ( k_value * UNIT_WEIGHT )")
 # -----------------------------
 # Sample data for plotting if dataset is large
 MAX_POINTS = 20000
