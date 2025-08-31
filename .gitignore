@@ -3,3 +3,4 @@ data/
 
 # Ignore nested folder
 raw_data/
+.env
